@@ -1,0 +1,15 @@
+build-driver/
+build-user/
+*.user
+*.VC.db
+*.opendb
+*.log
+*.tlog
+*.lastbuildstate
+*.obj
+*.pdb
+*.lib
+*.exp
+*.sys
+*.cat
+*.cer

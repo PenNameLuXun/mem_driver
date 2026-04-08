@@ -1,0 +1,64 @@
+#ifndef MEMATTRIB_SHARED_H
+#define MEMATTRIB_SHARED_H
+
+#ifdef _KERNEL_MODE
+#include <ntddk.h>
+#else
+#include <Windows.h>
+#endif
+
+#define MEMATTRIB_DEVICE_TYPE 0x8000
+#define MEMATTRIB_DOS_DEVICE_NAME L"\\\\.\\MemAttrib"
+#define MEMATTRIB_NT_DEVICE_NAME L"\\Device\\MemAttrib"
+#define MEMATTRIB_DOS_SYMLINK_NAME L"\\DosDevices\\MemAttrib"
+
+#define MEMATTRIB_MAX_PATH_CHARS 260
+#define MEMATTRIB_MAX_BATCH_COUNT 128
+
+#ifndef MEM_IMAGE
+#define MEM_IMAGE 0x01000000
+#endif
+
+#ifdef _KERNEL_MODE
+#ifndef MemoryMappedFilenameInformation
+#define MemoryMappedFilenameInformation ((MEMORY_INFORMATION_CLASS)2)
+#endif
+#endif
+
+#define IOCTL_MEMATTRIB_QUERY_REGION \
+    CTL_CODE(MEMATTRIB_DEVICE_TYPE, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+#define IOCTL_MEMATTRIB_SNAPSHOT_REGIONS \
+    CTL_CODE(MEMATTRIB_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
+
+typedef struct _MEMATTRIB_REGION_REQUEST {
+    ULONG ProcessId;
+    ULONG Reserved;
+    ULONG64 Address;
+} MEMATTRIB_REGION_REQUEST, *PMEMATTRIB_REGION_REQUEST;
+
+typedef struct _MEMATTRIB_REGION_INFO {
+    ULONG64 BaseAddress;
+    ULONG64 AllocationBase;
+    ULONG64 RegionSize;
+    ULONG State;
+    ULONG Protect;
+    ULONG Type;
+    ULONG AllocationProtect;
+    WCHAR MappedFile[MEMATTRIB_MAX_PATH_CHARS];
+} MEMATTRIB_REGION_INFO, *PMEMATTRIB_REGION_INFO;
+
+typedef struct _MEMATTRIB_SNAPSHOT_REQUEST {
+    ULONG ProcessId;
+    ULONG MaxRegionCount;
+    ULONG64 StartAddress;
+} MEMATTRIB_SNAPSHOT_REQUEST, *PMEMATTRIB_SNAPSHOT_REQUEST;
+
+typedef struct _MEMATTRIB_SNAPSHOT_RESPONSE {
+    ULONG64 NextAddress;
+    ULONG RegionCount;
+    ULONG MoreData;
+    MEMATTRIB_REGION_INFO Regions[1];
+} MEMATTRIB_SNAPSHOT_RESPONSE, *PMEMATTRIB_SNAPSHOT_RESPONSE;
+
+#endif

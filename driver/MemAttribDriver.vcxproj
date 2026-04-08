@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <ItemGroup Label="ProjectConfigurations">
+
+    <ProjectConfiguration Include="Debug|x64">
+
+      <Configuration>Debug</Configuration>
+
+      <Platform>x64</Platform>
+
+    </ProjectConfiguration>
+
+    <ProjectConfiguration Include="Release|x64">
+
+      <Configuration>Release</Configuration>
+
+      <Platform>x64</Platform>
+
+    </ProjectConfiguration>
+
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+
+    <ProjectGuid>{E94C6DBE-4AC9-4F20-95A5-4D8D4128B8CB}</ProjectGuid>
+
+    <Keyword>Win32Proj</Keyword>
+
+    <RootNamespace>MemAttribDriver</RootNamespace>
+
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+
+    <ConfigurationType>Driver</ConfigurationType>
+
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+
+    <DriverType>KMDF</DriverType>
+
+    <KMDF_VERSION_MAJOR>1</KMDF_VERSION_MAJOR>
+
+    <KMDF_VERSION_MINOR>33</KMDF_VERSION_MINOR>
+
+    <TargetVersion>Windows10</TargetVersion>
+
+    <UseDebugLibraries>false</UseDebugLibraries>
+
+    <EnableTestSign>false</EnableTestSign>
+
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="ExtensionSettings">
+
+  </ImportGroup>
+
+  <ImportGroup Label="Shared">
+
+  </ImportGroup>
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+
+  </ImportGroup>
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+
+  </ImportGroup>
+
+  <PropertyGroup Label="UserMacros" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+
+    <OutDir>$(SolutionDir)build-driver\$(Configuration)\</OutDir>
+
+    <IntDir>$(SolutionDir)build-driver\obj\$(ProjectName)\$(Configuration)\</IntDir>
+
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+
+    <OutDir>$(SolutionDir)build-driver\$(Configuration)\</OutDir>
+
+    <IntDir>$(SolutionDir)build-driver\obj\$(ProjectName)\$(Configuration)\</IntDir>
+
+  </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+
+    <ClCompile>
+
+      <WarningLevel>Level4</WarningLevel>
+
+      <TreatWarningAsError>false</TreatWarningAsError>
+
+      <SpectreMitigation>false</SpectreMitigation>
+
+      <PreprocessorDefinitions>_AMD64_;AMD64;DBG=1;DEPRECATE_DDK_FUNCTIONS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+
+      <AdditionalOptions>/kernel %(AdditionalOptions)</AdditionalOptions>
+
+    </ClCompile>
+
+    <Link>
+
+      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+
+    </Link>
+
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+
+    <ClCompile>
+
+      <WarningLevel>Level4</WarningLevel>
+
+      <TreatWarningAsError>false</TreatWarningAsError>
+
+      <SpectreMitigation>false</SpectreMitigation>
+
+      <PreprocessorDefinitions>_AMD64_;AMD64;NDEBUG;DEPRECATE_DDK_FUNCTIONS=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+
+      <AdditionalOptions>/kernel %(AdditionalOptions)</AdditionalOptions>
+
+    </ClCompile>
+
+    <Link>
+
+      <EntryPointSymbol>DriverEntry</EntryPointSymbol>
+
+    </Link>
+
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+
+    <ClCompile Include="memattrib_driver.c" />
+
+  </ItemGroup>
+
+  <ItemGroup>
+
+    <ClInclude Include="..\shared\memattrib_shared.h" />
+
+  </ItemGroup>
+
+  <ItemGroup>
+
+    <Inf Include="memattrib.inf" />
+
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+  <ImportGroup Label="ExtensionTargets">
+
+  </ImportGroup>
+
+</Project>
+
