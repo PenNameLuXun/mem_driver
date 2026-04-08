@@ -204,6 +204,41 @@ cmake --build build-user --config Release
 build-user\Release\MemAttribCli.exe
 ```
 
+### 一键构建发布
+
+仓库根目录现在提供了顶层 CMake 入口，可以把“构建用户态 + 构建驱动 + 收集产物 + 打 zip”串成一条命令。
+
+首次生成：
+
+```powershell
+cmake -S . -B build
+```
+
+一键发布：
+
+```powershell
+cmake --build build --config Release --target publish
+```
+
+如果你只想编译，不打包：
+
+```powershell
+cmake --build build --config Release --target build_all
+```
+
+如果你只想收集发布目录，不打 zip：
+
+```powershell
+cmake --build build --config Release --target release_bundle
+```
+
+发布产物位置：
+
+```text
+build\release\
+build\MemAttrib-Release.zip
+```
+
 ## 运行命令
 
 ### 运行用户态程序
@@ -391,6 +426,13 @@ winget install --id Microsoft.WindowsWDK.10.0.26100 --exact --accept-package-agr
 ```powershell
 cmake -S user -B build-user
 cmake --build build-user --config Release
+```
+
+一键构建发布：
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release --target publish
 ```
 
 运行用户态：
