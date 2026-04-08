@@ -239,6 +239,27 @@ build\release\
 build\MemAttrib-Release.zip
 ```
 
+### PowerShell 一键发布脚本
+
+如果你不想手动记 CMake 命令，也可以直接运行仓库根目录下的脚本：
+
+```powershell
+.\release.ps1
+```
+
+默认行为：
+
+- 使用 `build` 作为构建目录
+- 使用 `Release` 作为构建配置
+- 自动执行顶层 CMake 配置
+- 自动执行 `publish` 目标
+
+如果想指定目录或配置：
+
+```powershell
+.\release.ps1 -BuildDir build -Configuration Release
+```
+
 ## 运行命令
 
 ### 运行用户态程序
