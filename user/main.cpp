@@ -27,6 +27,10 @@ struct RegionBatch {
     std::uint64_t nextAddress = 0;
 };
 
+struct ReadResult {
+    std::vector<std::uint8_t> bytes;
+};
+
 std::wstring ToHex(std::uint64_t value)
 {
     std::wstringstream stream;
@@ -213,6 +217,36 @@ bool SnapshotRegions(HANDLE driver, DWORD pid, std::uint64_t startAddress, ULONG
     return true;
 }
 
+bool ReadMemory(HANDLE driver, DWORD pid, std::uint64_t address, ULONG size, ReadResult& result)
+{
+    MEMATTRIB_READ_REQUEST request{};
+    const DWORD outputSize = static_cast<DWORD>(
+        FIELD_OFFSET(MEMATTRIB_READ_RESPONSE, Data) + size
+    );
+    std::vector<std::byte> buffer(outputSize);
+    DWORD bytesReturned = 0;
+
+    request.ProcessId = pid;
+    request.Address = address;
+    request.Size = size;
+
+    if (!DeviceIoControl(
+            driver,
+            IOCTL_MEMATTRIB_READ_MEMORY,
+            &request,
+            sizeof(request),
+            buffer.data(),
+            outputSize,
+            &bytesReturned,
+            nullptr)) {
+        return false;
+    }
+
+    const auto* response = reinterpret_cast<const MEMATTRIB_READ_RESPONSE*>(buffer.data());
+    result.bytes.assign(response->Data, response->Data + response->BytesRead);
+    return true;
+}
+
 bool LoadProcessModulesForSymbols(HANDLE process)
 {
     DWORD processId = GetProcessId(process);
@@ -288,7 +322,8 @@ void PrintUsage()
         << L"MemAttribCli --list\n"
         << L"MemAttribCli --pid <pid> --summary\n"
         << L"MemAttribCli --pid <pid> --regions\n"
-        << L"MemAttribCli --pid <pid> --addr <hex-address>\n";
+        << L"MemAttribCli --pid <pid> --addr <hex-address>\n"
+        << L"MemAttribCli --pid <pid> --read <hex-address> --size <decimal-or-hex>\n";
 }
 
 void PrintRegion(const MEMATTRIB_REGION_INFO& info)
@@ -325,6 +360,53 @@ int RunAddressQuery(HANDLE driver, DWORD pid, std::uint64_t address)
 
     PrintRegion(info);
     std::wcout << L"NearestSymbol=" << DescribeNearestSymbol(pid, address) << L"\n";
+    return 0;
+}
+
+void PrintHexDump(std::uint64_t baseAddress, const std::vector<std::uint8_t>& bytes)
+{
+    constexpr std::size_t kBytesPerLine = 16;
+
+    for (std::size_t offset = 0; offset < bytes.size(); offset += kBytesPerLine) {
+        std::wcout << ToHex(baseAddress + offset) << L"  ";
+
+        for (std::size_t index = 0; index < kBytesPerLine; ++index) {
+            if (offset + index < bytes.size()) {
+                std::wcout << std::setw(2) << std::setfill(L'0') << std::hex << std::uppercase
+                           << static_cast<unsigned>(bytes[offset + index]) << L' ';
+            } else {
+                std::wcout << L"   ";
+            }
+        }
+
+        std::wcout << L" ";
+        for (std::size_t index = 0; index < kBytesPerLine && offset + index < bytes.size(); ++index) {
+            const wchar_t ch = static_cast<wchar_t>(bytes[offset + index]);
+            std::wcout << (bytes[offset + index] >= 0x20 && bytes[offset + index] <= 0x7E ? ch : L'.');
+        }
+
+        std::wcout << std::setfill(L' ') << L"\n";
+    }
+}
+
+int RunReadMemory(HANDLE driver, DWORD pid, std::uint64_t address, ULONG size)
+{
+    MEMATTRIB_REGION_INFO info{};
+    if (!QueryRegion(driver, pid, address, info)) {
+        std::wcerr << L"driver query failed, GetLastError=" << GetLastError() << L"\n";
+        return 1;
+    }
+
+    PrintRegion(info);
+
+    ReadResult result;
+    if (!ReadMemory(driver, pid, address, size, result)) {
+        std::wcerr << L"memory read failed, GetLastError=" << GetLastError() << L"\n";
+        return 1;
+    }
+
+    std::wcout << L"BytesRead=" << result.bytes.size() << L"\n";
+    PrintHexDump(address, result.bytes);
     return 0;
 }
 
@@ -425,7 +507,10 @@ int wmain(int argc, wchar_t** argv)
     bool summary = false;
     bool regions = false;
     bool hasAddress = false;
+    bool hasReadAddress = false;
+    bool hasReadSize = false;
     std::uint64_t address = 0;
+    ULONG readSize = 0;
 
     for (std::size_t index = 0; index < args.size(); ++index) {
         if (args[index] == L"--pid" && index + 1 < args.size()) {
@@ -436,10 +521,26 @@ int wmain(int argc, wchar_t** argv)
             regions = true;
         } else if (args[index] == L"--addr" && index + 1 < args.size()) {
             hasAddress = ParseUlong64(args[++index], address);
+        } else if (args[index] == L"--read" && index + 1 < args.size()) {
+            hasReadAddress = ParseUlong64(args[++index], address);
+        } else if (args[index] == L"--size" && index + 1 < args.size()) {
+            hasReadSize = ParseUlong(args[++index], readSize);
         }
     }
 
-    if (!hasPid || (!summary && !regions && !hasAddress)) {
+    const bool hasRead = hasReadAddress && hasReadSize;
+
+    if (!hasPid || (!summary && !regions && !hasAddress && !hasRead)) {
+        PrintUsage();
+        return 1;
+    }
+
+    if ((hasReadAddress || hasReadSize) && !hasRead) {
+        PrintUsage();
+        return 1;
+    }
+
+    if (hasRead && (readSize == 0 || readSize > MEMATTRIB_MAX_READ_SIZE)) {
         PrintUsage();
         return 1;
     }
@@ -456,6 +557,8 @@ int wmain(int argc, wchar_t** argv)
         exitCode = RunSummary(driver, pid);
     } else if (regions) {
         exitCode = RunRegions(driver, pid);
+    } else if (hasRead) {
+        exitCode = RunReadMemory(driver, pid, address, readSize);
     } else if (hasAddress) {
         exitCode = RunAddressQuery(driver, pid, address);
     }

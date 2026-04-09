@@ -328,6 +328,14 @@ build\MemAttrib-Release.zip
 .\build-user\Release\MemAttribCli.exe --pid 1234 --addr 0x7ff712340000
 ```
 
+读取某个地址开始的一小段内存并输出十六进制内容：
+
+```powershell
+.\build-user\Release\MemAttribCli.exe --pid 1234 --read 0x7ff712340000 --size 0x100
+```
+
+`--read` 目前是学习用接口，单次最大读取 `0x1000` 字节。
+
 ### 驱动加载说明
 
 当前仓库已经能成功编译出 `.sys`，但默认还没有完成签名与正式安装流程。

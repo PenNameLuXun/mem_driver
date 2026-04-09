@@ -7,10 +7,23 @@
 DRIVER_INITIALIZE DriverEntry;
 DRIVER_UNLOAD MemAttribUnload;
 
+NTKERNELAPI
+NTSTATUS
+MmCopyVirtualMemory(
+    _In_ PEPROCESS FromProcess,
+    _In_ PVOID FromAddress,
+    _In_ PEPROCESS ToProcess,
+    _Out_writes_bytes_(BufferSize) PVOID ToAddress,
+    _In_ SIZE_T BufferSize,
+    _In_ KPROCESSOR_MODE PreviousMode,
+    _Out_ PSIZE_T NumberOfBytesCopied
+);
+
 static NTSTATUS MemAttribCreateClose(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 static NTSTATUS MemAttribDeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 static NTSTATUS MemAttribHandleQueryRegion(PIRP Irp, PIO_STACK_LOCATION IrpSp);
 static NTSTATUS MemAttribHandleSnapshot(PIRP Irp, PIO_STACK_LOCATION IrpSp);
+static NTSTATUS MemAttribHandleReadMemory(PIRP Irp, PIO_STACK_LOCATION IrpSp);
 static NTSTATUS MemAttribQueryRegion(
     _In_ PEPROCESS Process,
     _In_ PVOID Address,
@@ -96,6 +109,9 @@ MemAttribDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _In_ PIRP Irp)
         break;
     case IOCTL_MEMATTRIB_SNAPSHOT_REGIONS:
         status = MemAttribHandleSnapshot(Irp, irpSp);
+        break;
+    case IOCTL_MEMATTRIB_READ_MEMORY:
+        status = MemAttribHandleReadMemory(Irp, irpSp);
         break;
     default:
         status = STATUS_INVALID_DEVICE_REQUEST;
@@ -221,6 +237,68 @@ MemAttribHandleSnapshot(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION IrpSp)
 
     Irp->IoStatus.Information = FIELD_OFFSET(MEMATTRIB_SNAPSHOT_RESPONSE, Regions) +
         count * sizeof(MEMATTRIB_REGION_INFO);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+MemAttribHandleReadMemory(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION IrpSp)
+{
+    NTSTATUS status;
+    PEPROCESS process = NULL;
+    PMEMATTRIB_READ_RESPONSE response;
+    MEMATTRIB_READ_REQUEST request;
+    ULONG inputLength = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
+    ULONG outputLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
+    SIZE_T maxPayload;
+    SIZE_T bytesRead = 0;
+
+    if (inputLength < sizeof(MEMATTRIB_READ_REQUEST) ||
+        outputLength < FIELD_OFFSET(MEMATTRIB_READ_RESPONSE, Data)) {
+        Irp->IoStatus.Information = 0;
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    RtlCopyMemory(&request, Irp->AssociatedIrp.SystemBuffer, sizeof(request));
+    response = (PMEMATTRIB_READ_RESPONSE)Irp->AssociatedIrp.SystemBuffer;
+    RtlZeroMemory(response, outputLength);
+
+    if (request.Size == 0 || request.Size > MEMATTRIB_MAX_READ_SIZE) {
+        Irp->IoStatus.Information = 0;
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    maxPayload = outputLength - FIELD_OFFSET(MEMATTRIB_READ_RESPONSE, Data);
+    if (maxPayload == 0 || request.Size > maxPayload) {
+        Irp->IoStatus.Information = 0;
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    status = PsLookupProcessByProcessId(ULongToHandle(request.ProcessId), &process);
+    if (!NT_SUCCESS(status)) {
+        Irp->IoStatus.Information = 0;
+        return status;
+    }
+
+    status = MmCopyVirtualMemory(
+        process,
+        (PVOID)(ULONG_PTR)request.Address,
+        PsGetCurrentProcess(),
+        response->Data,
+        request.Size,
+        KernelMode,
+        &bytesRead
+    );
+
+    ObDereferenceObject(process);
+
+    if (!NT_SUCCESS(status) && bytesRead == 0) {
+        Irp->IoStatus.Information = 0;
+        return status;
+    }
+
+    response->BytesRead = (ULONG)bytesRead;
+    Irp->IoStatus.Information = FIELD_OFFSET(MEMATTRIB_READ_RESPONSE, Data) + (ULONG)bytesRead;
+
     return STATUS_SUCCESS;
 }
 
