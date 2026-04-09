@@ -31,6 +31,17 @@ struct ReadResult {
     std::vector<std::uint8_t> bytes;
 };
 
+struct RegionFilterOptions {
+    bool includeFree = false;
+    bool committedOnly = false;
+    bool imageOnly = false;
+    bool freeOnly = false;
+    bool hasProtectFilter = false;
+    bool hasTypeFilter = false;
+    ULONG protect = 0;
+    ULONG type = 0;
+};
+
 std::wstring ToHex(std::uint64_t value)
 {
     std::wstringstream stream;
@@ -126,6 +137,57 @@ bool ParseUlong64(const std::wstring& text, std::uint64_t& value)
     } catch (...) {
         return false;
     }
+}
+
+std::wstring ToUpperCopy(std::wstring text)
+{
+    std::transform(text.begin(), text.end(), text.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(towupper(ch));
+    });
+    return text;
+}
+
+bool ParseProtectFilter(const std::wstring& text, ULONG& value)
+{
+    static const std::pair<const wchar_t*, ULONG> mapping[] = {
+        { L"EXECUTE", PAGE_EXECUTE },
+        { L"EXECUTE_READ", PAGE_EXECUTE_READ },
+        { L"EXECUTE_READWRITE", PAGE_EXECUTE_READWRITE },
+        { L"EXECUTE_WRITECOPY", PAGE_EXECUTE_WRITECOPY },
+        { L"NOACCESS", PAGE_NOACCESS },
+        { L"READONLY", PAGE_READONLY },
+        { L"READWRITE", PAGE_READWRITE },
+        { L"WRITECOPY", PAGE_WRITECOPY },
+    };
+
+    const std::wstring normalized = ToUpperCopy(text);
+    for (const auto& [name, protectValue] : mapping) {
+        if (normalized == name) {
+            value = protectValue;
+            return true;
+        }
+    }
+
+    return ParseUlong(normalized, value);
+}
+
+bool ParseTypeFilter(const std::wstring& text, ULONG& value)
+{
+    static const std::pair<const wchar_t*, ULONG> mapping[] = {
+        { L"MEM_IMAGE", MEM_IMAGE },
+        { L"MEM_MAPPED", MEM_MAPPED },
+        { L"MEM_PRIVATE", MEM_PRIVATE },
+    };
+
+    const std::wstring normalized = ToUpperCopy(text);
+    for (const auto& [name, typeValue] : mapping) {
+        if (normalized == name) {
+            value = typeValue;
+            return true;
+        }
+    }
+
+    return ParseUlong(normalized, value);
 }
 
 std::vector<ProcessEntry> EnumerateProcesses()
@@ -320,8 +382,8 @@ void PrintUsage()
 {
     std::wcout
         << L"MemAttribCli --list\n"
-        << L"MemAttribCli --pid <pid> --summary\n"
-        << L"MemAttribCli --pid <pid> --regions\n"
+        << L"MemAttribCli --pid <pid> --summary [--include-free] [--committed] [--image-only] [--free-only] [--protect <name|value>] [--type <name|value>]\n"
+        << L"MemAttribCli --pid <pid> --regions [--include-free] [--committed] [--image-only] [--free-only] [--protect <name|value>] [--type <name|value>]\n"
         << L"MemAttribCli --pid <pid> --addr <hex-address>\n"
         << L"MemAttribCli --pid <pid> --read <hex-address> --size <decimal-or-hex>\n";
 }
@@ -437,9 +499,54 @@ std::vector<MEMATTRIB_REGION_INFO> ReadAllRegions(HANDLE driver, DWORD pid)
     return result;
 }
 
-int RunRegions(HANDLE driver, DWORD pid)
+bool MatchesFilter(const MEMATTRIB_REGION_INFO& region, const RegionFilterOptions& filter)
 {
-    const auto regions = ReadAllRegions(driver, pid);
+    if (filter.freeOnly) {
+        return region.State == MEM_FREE;
+    }
+
+    if (!filter.includeFree && region.State == MEM_FREE) {
+        return false;
+    }
+
+    if (filter.committedOnly && region.State != MEM_COMMIT) {
+        return false;
+    }
+
+    if (filter.imageOnly && region.Type != MEM_IMAGE) {
+        return false;
+    }
+
+    if (filter.hasProtectFilter && (region.Protect & 0xFF) != filter.protect) {
+        return false;
+    }
+
+    if (filter.hasTypeFilter && region.Type != filter.type) {
+        return false;
+    }
+
+    return true;
+}
+
+std::vector<MEMATTRIB_REGION_INFO> ApplyRegionFilter(
+    const std::vector<MEMATTRIB_REGION_INFO>& regions,
+    const RegionFilterOptions& filter)
+{
+    std::vector<MEMATTRIB_REGION_INFO> filtered;
+    filtered.reserve(regions.size());
+
+    for (const auto& region : regions) {
+        if (MatchesFilter(region, filter)) {
+            filtered.push_back(region);
+        }
+    }
+
+    return filtered;
+}
+
+int RunRegions(HANDLE driver, DWORD pid, const RegionFilterOptions& filter)
+{
+    const auto regions = ApplyRegionFilter(ReadAllRegions(driver, pid), filter);
     for (const auto& region : regions) {
         PrintRegion(region);
     }
@@ -447,9 +554,9 @@ int RunRegions(HANDLE driver, DWORD pid)
     return 0;
 }
 
-int RunSummary(HANDLE driver, DWORD pid)
+int RunSummary(HANDLE driver, DWORD pid, const RegionFilterOptions& filter)
 {
-    const auto regions = ReadAllRegions(driver, pid);
+    const auto regions = ApplyRegionFilter(ReadAllRegions(driver, pid), filter);
     std::map<std::wstring, std::uint64_t> byOwner;
     std::map<std::wstring, std::uint64_t> byType;
     std::map<std::wstring, std::uint64_t> byProtect;
@@ -509,8 +616,11 @@ int wmain(int argc, wchar_t** argv)
     bool hasAddress = false;
     bool hasReadAddress = false;
     bool hasReadSize = false;
+    bool sawProtectArgument = false;
+    bool sawTypeArgument = false;
     std::uint64_t address = 0;
     ULONG readSize = 0;
+    RegionFilterOptions filter;
 
     for (std::size_t index = 0; index < args.size(); ++index) {
         if (args[index] == L"--pid" && index + 1 < args.size()) {
@@ -525,6 +635,20 @@ int wmain(int argc, wchar_t** argv)
             hasReadAddress = ParseUlong64(args[++index], address);
         } else if (args[index] == L"--size" && index + 1 < args.size()) {
             hasReadSize = ParseUlong(args[++index], readSize);
+        } else if (args[index] == L"--include-free") {
+            filter.includeFree = true;
+        } else if (args[index] == L"--committed") {
+            filter.committedOnly = true;
+        } else if (args[index] == L"--image-only") {
+            filter.imageOnly = true;
+        } else if (args[index] == L"--free-only") {
+            filter.freeOnly = true;
+        } else if (args[index] == L"--protect" && index + 1 < args.size()) {
+            sawProtectArgument = true;
+            filter.hasProtectFilter = ParseProtectFilter(args[++index], filter.protect);
+        } else if (args[index] == L"--type" && index + 1 < args.size()) {
+            sawTypeArgument = true;
+            filter.hasTypeFilter = ParseTypeFilter(args[++index], filter.type);
         }
     }
 
@@ -545,6 +669,16 @@ int wmain(int argc, wchar_t** argv)
         return 1;
     }
 
+    if (filter.freeOnly && (filter.includeFree || filter.committedOnly || filter.imageOnly)) {
+        PrintUsage();
+        return 1;
+    }
+
+    if ((sawProtectArgument && !filter.hasProtectFilter) || (sawTypeArgument && !filter.hasTypeFilter)) {
+        PrintUsage();
+        return 1;
+    }
+
     HANDLE driver = OpenDriver();
     if (driver == INVALID_HANDLE_VALUE) {
         std::wcerr << L"failed to open " << MEMATTRIB_DOS_DEVICE_NAME
@@ -554,9 +688,9 @@ int wmain(int argc, wchar_t** argv)
 
     int exitCode = 0;
     if (summary) {
-        exitCode = RunSummary(driver, pid);
+        exitCode = RunSummary(driver, pid, filter);
     } else if (regions) {
-        exitCode = RunRegions(driver, pid);
+        exitCode = RunRegions(driver, pid, filter);
     } else if (hasRead) {
         exitCode = RunReadMemory(driver, pid, address, readSize);
     } else if (hasAddress) {

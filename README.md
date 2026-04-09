@@ -316,11 +316,33 @@ build\MemAttrib-Release.zip
 .\build-user\Release\MemAttribCli.exe --pid 1234 --summary
 ```
 
+默认会忽略 `MEM_FREE` 空闲区。如果你想进一步收窄范围，还可以加：
+
+```powershell
+.\build-user\Release\MemAttribCli.exe --pid 1234 --summary --committed
+.\build-user\Release\MemAttribCli.exe --pid 1234 --summary --image-only
+.\build-user\Release\MemAttribCli.exe --pid 1234 --summary --free-only
+```
+
 查看某个进程所有内存区域：
 
 ```powershell
 .\build-user\Release\MemAttribCli.exe --pid 1234 --regions
 ```
+
+`--regions` 也默认忽略 `MEM_FREE`。常用筛选方式：
+
+```powershell
+.\build-user\Release\MemAttribCli.exe --pid 1234 --regions --committed
+.\build-user\Release\MemAttribCli.exe --pid 1234 --regions --image-only
+.\build-user\Release\MemAttribCli.exe --pid 1234 --regions --free-only
+.\build-user\Release\MemAttribCli.exe --pid 1234 --regions --include-free
+.\build-user\Release\MemAttribCli.exe --pid 1234 --regions --protect READWRITE
+.\build-user\Release\MemAttribCli.exe --pid 1234 --regions --type MEM_IMAGE
+```
+
+`--protect` 支持名字或数值，比如 `READONLY`、`READWRITE`、`EXECUTE_READ`、`0x04`。
+`--type` 支持 `MEM_IMAGE`、`MEM_MAPPED`、`MEM_PRIVATE` 或直接写数值。
 
 查询某个地址的归属并尝试解析符号：
 
