@@ -58,6 +58,9 @@ set(MEMATTRIB_DRIVER_CERT
 set(MEMATTRIB_USER_EXE
     "$<TARGET_FILE:MemAttribCli>"
 )
+set(MEMATTRIB_SEGMENT_DEMO_EXE
+    "$<TARGET_FILE:SegmentLayoutDemo>"
+)
 set(MEMATTRIB_RELEASE_ZIP
     "${CMAKE_BINARY_DIR}/MemAttrib-${MEMATTRIB_DRIVER_CONFIGURATION}.zip"
 )
@@ -79,7 +82,7 @@ add_custom_target(build_driver
 )
 
 add_custom_target(build_all
-    DEPENDS MemAttribCli build_driver
+    DEPENDS MemAttribCli SegmentLayoutDemo build_driver
 )
 
 add_custom_target(sign_driver
@@ -100,13 +103,14 @@ add_custom_target(sign_driver
 )
 
 add_custom_target(build_all_signed
-    DEPENDS MemAttribCli sign_driver
+    DEPENDS MemAttribCli SegmentLayoutDemo sign_driver
 )
 
 add_custom_target(release_bundle
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MEMATTRIB_RELEASE_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${MEMATTRIB_RELEASE_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_USER_EXE}" "${MEMATTRIB_RELEASE_DIR}/"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_SEGMENT_DEMO_EXE}" "${MEMATTRIB_RELEASE_DIR}/"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_DRIVER_SYS}" "${MEMATTRIB_RELEASE_DIR}/"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_DRIVER_INF}" "${MEMATTRIB_RELEASE_DIR}/"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_DRIVER_CERT}" "${MEMATTRIB_RELEASE_DIR}/"

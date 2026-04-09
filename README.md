@@ -599,6 +599,12 @@ cmake --build build --config Release --target publish
 .\build-user\Release\MemAttribCli.exe --list
 ```
 
+运行段布局示例：
+
+```powershell
+.\build-user\Release\SegmentLayoutDemo.exe
+```
+
 ## 学习重点
 
 这个版本适合做课程作业或学习演示，重点在于分层：
@@ -622,3 +628,50 @@ cmake --build build --config Release --target publish
 - 控制台 UI 便于调试，若作业要求图形界面，可以在现有分析层外面再包一层 Qt/WPF
 
 - 当前附带的 `.vcxproj` 是便于课程实验的最小工程模板；不同 WDK 版本的属性名可能略有差异，如果 VS 打开后提示升级或修复，按提示调整即可
+
+## C 段布局示例
+
+仓库里额外附带了一个最小 C 程序 [segment_demo.c](d:/Users/PenNa/Documents/playground/learn_win_driver/user/segment_demo.c)，
+它会打印下面这些地址并暂停等待回车：
+
+- `main`
+- `demo_function`
+- `g_initialized`
+- `g_bss`
+- `g_literal`
+- `heap_var`
+- `stack_var`
+
+构建后可执行文件是：
+
+```powershell
+.\build-user\Release\SegmentLayoutDemo.exe
+```
+
+或者直接用发布包里的：
+
+```powershell
+.\SegmentLayoutDemo.exe
+```
+
+建议验证顺序：
+
+1. 先运行 `SegmentLayoutDemo.exe`
+2. 另开一个终端执行 `.\MemAttribCli.exe --list | Select-String SegmentLayoutDemo`
+3. 记下 PID
+4. 对程序打印出的每个地址执行 `--addr`
+
+例如：
+
+```powershell
+.\MemAttribCli.exe --pid 1234 --addr 0x7FF6AB410000
+```
+
+通常可以观察到：
+
+- `.text` 对应 `MEM_IMAGE + EXECUTE_READ`
+- `.rdata` 对应 `MEM_IMAGE + READONLY`
+- `.data` 对应 `MEM_IMAGE + READWRITE`
+- `.bss` 通常也会落在 `MEM_IMAGE + READWRITE`
+- `heap` 对应 `MEM_PRIVATE + READWRITE`
+- `stack` 对应 `MEM_PRIVATE + READWRITE`
