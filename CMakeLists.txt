@@ -4,6 +4,7 @@ project(MemAttribRelease LANGUAGES CXX)
 set(MEMATTRIB_DRIVER_CONFIGURATION "Release" CACHE STRING "Driver build configuration")
 set(MEMATTRIB_DRIVER_PLATFORM "x64" CACHE STRING "Driver build platform")
 set(MEMATTRIB_RELEASE_DIR "${CMAKE_BINARY_DIR}/release" CACHE PATH "Release bundle output directory")
+set(MEMATTRIB_SIGN_CERT_SHA1 "278A5E694DF02E629A4C16C88D35C165EE62AB70" CACHE STRING "SHA1 thumbprint of the pre-created code-signing certificate")
 
 find_program(
     MEMATTRIB_MSBUILD
@@ -21,6 +22,28 @@ if(NOT MEMATTRIB_MSBUILD)
     message(FATAL_ERROR "MSBuild.exe not found. Install Visual Studio 2022 with WDK integration first.")
 endif()
 
+set(
+    MEMATTRIB_WINDOWS_POWERSHELL
+    "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    CACHE FILEPATH "Windows PowerShell executable used for signing scripts"
+)
+
+if(NOT EXISTS "${MEMATTRIB_WINDOWS_POWERSHELL}")
+    message(FATAL_ERROR "Windows PowerShell not found at ${MEMATTRIB_WINDOWS_POWERSHELL}")
+endif()
+
+find_program(
+    MEMATTRIB_SIGNTOOL
+    NAMES signtool.exe
+    PATHS
+        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64"
+        "C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x86"
+)
+
+if(NOT MEMATTRIB_SIGNTOOL)
+    message(FATAL_ERROR "signtool.exe not found. Install the Windows SDK / WDK signing tools first.")
+endif()
+
 add_subdirectory(user)
 
 set(MEMATTRIB_DRIVER_SYS
@@ -28,6 +51,9 @@ set(MEMATTRIB_DRIVER_SYS
 )
 set(MEMATTRIB_DRIVER_INF
     "${CMAKE_SOURCE_DIR}/build-driver/${MEMATTRIB_DRIVER_CONFIGURATION}/memattrib.inf"
+)
+set(MEMATTRIB_DRIVER_CERT
+    "${CMAKE_SOURCE_DIR}/build-driver/${MEMATTRIB_DRIVER_CONFIGURATION}/MemAttribTest.cer"
 )
 set(MEMATTRIB_USER_EXE
     "$<TARGET_FILE:MemAttribCli>"
@@ -56,14 +82,39 @@ add_custom_target(build_all
     DEPENDS MemAttribCli build_driver
 )
 
+add_custom_target(sign_driver
+    COMMAND
+        "${MEMATTRIB_WINDOWS_POWERSHELL}"
+        -NoProfile
+        -ExecutionPolicy Bypass
+        -File "${CMAKE_SOURCE_DIR}/scripts/sign-driver.ps1"
+        -DriverPath "${MEMATTRIB_DRIVER_SYS}"
+        -CertificateOutputPath "${MEMATTRIB_DRIVER_CERT}"
+        -SignToolPath "${MEMATTRIB_SIGNTOOL}"
+        -CertificateThumbprint "${MEMATTRIB_SIGN_CERT_SHA1}"
+    DEPENDS build_driver
+    BYPRODUCTS
+        "${MEMATTRIB_DRIVER_CERT}"
+    USES_TERMINAL
+    COMMENT "Signing kernel driver and exporting test certificate"
+)
+
+add_custom_target(build_all_signed
+    DEPENDS MemAttribCli sign_driver
+)
+
 add_custom_target(release_bundle
     COMMAND "${CMAKE_COMMAND}" -E rm -rf "${MEMATTRIB_RELEASE_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${MEMATTRIB_RELEASE_DIR}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_USER_EXE}" "${MEMATTRIB_RELEASE_DIR}/"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_DRIVER_SYS}" "${MEMATTRIB_RELEASE_DIR}/"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_DRIVER_INF}" "${MEMATTRIB_RELEASE_DIR}/"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${MEMATTRIB_DRIVER_CERT}" "${MEMATTRIB_RELEASE_DIR}/"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/README.md" "${MEMATTRIB_RELEASE_DIR}/"
-    DEPENDS build_all
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${MEMATTRIB_RELEASE_DIR}/scripts"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/enable-test-mode.ps1" "${MEMATTRIB_RELEASE_DIR}/scripts/"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/load-driver.ps1" "${MEMATTRIB_RELEASE_DIR}/scripts/"
+    DEPENDS build_all_signed
     USES_TERMINAL
     COMMENT "Collecting release bundle"
 )

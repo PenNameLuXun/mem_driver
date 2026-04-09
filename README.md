@@ -220,10 +220,39 @@ cmake -S . -B build
 cmake --build build --config Release --target publish
 ```
 
+`publish` 现在会自动完成：
+
+- 构建用户态程序
+- 构建驱动
+- 从证书存储中按预设 SHA1 指纹查找测试签名证书
+- 导出 `MemAttribTest.cer`
+- 使用 `signtool` 对 `MemAttribDriver.sys` 自动签名
+- 收集发布目录
+- 生成 zip 包
+
+当前默认使用的证书指纹是：
+
+```text
+278A5E694DF02E629A4C16C88D35C165EE62AB70
+```
+
+如果你在另一台机器上构建，先确保这张带私钥的测试证书已经导入到
+`CurrentUser\My` 或 `LocalMachine\My`。如果要换成别的证书，可以在配置时覆盖：
+
+```powershell
+cmake -S . -B build -DMEMATTRIB_SIGN_CERT_SHA1=你的证书SHA1
+```
+
 如果你只想编译，不打包：
 
 ```powershell
 cmake --build build --config Release --target build_all
+```
+
+如果你想编译并自动签名，但不打包：
+
+```powershell
+cmake --build build --config Release --target build_all_signed
 ```
 
 如果你只想收集发布目录，不打 zip：
@@ -239,6 +268,16 @@ build\release\
 build\MemAttrib-Release.zip
 ```
 
+发布目录和 zip 中会自动包含：
+
+- `MemAttribDriver.sys`
+- `memattrib.inf`
+- `MemAttribCli.exe`
+- `MemAttribTest.cer`
+- `scripts\enable-test-mode.ps1`
+- `scripts\load-driver.ps1`
+- `README.md`
+
 ### PowerShell 一键发布脚本
 
 如果你不想手动记 CMake 命令，也可以直接运行仓库根目录下的脚本：
@@ -253,6 +292,7 @@ build\MemAttrib-Release.zip
 - 使用 `Release` 作为构建配置
 - 自动执行顶层 CMake 配置
 - 自动执行 `publish` 目标
+- 自动签名最新驱动并导出 `MemAttribTest.cer`
 
 如果想指定目录或配置：
 
@@ -296,6 +336,72 @@ build\MemAttrib-Release.zip
 
 如果只是验证用户态参数和进程枚举，`--list` 不依赖驱动。
 
+### 发布包内测试脚本
+
+如果你把 `build\MemAttrib-Release.zip` 解压到另一台 Windows 机器或虚拟机，发布包里会自带两个脚本：
+
+- `scripts\enable-test-mode.ps1`
+- `scripts\load-driver.ps1`
+
+它们都基于相对路径定位发布目录中的文件，不需要你自己手动拼接绝对路径。
+
+#### 1. 开测试模式并安装证书
+
+以管理员 PowerShell 运行：
+
+```powershell
+.\scripts\enable-test-mode.ps1
+```
+
+如果系统提示“禁止运行脚本”，可以先在当前 PowerShell 会话里临时放开执行策略：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\enable-test-mode.ps1
+```
+
+或者直接一次性执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\enable-test-mode.ps1
+```
+
+这个脚本会：
+
+- 打开 `testsigning`
+- 导入 `MemAttribTest.cer` 到 `Root`
+- 导入 `MemAttribTest.cer` 到 `TrustedPublisher`
+
+执行完后需要重启系统。
+
+#### 2. 重启后加载驱动
+
+重启完成后，继续在管理员 PowerShell 中运行：
+
+```powershell
+.\scripts\load-driver.ps1
+```
+
+如果同样被执行策略拦住，也可以先执行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\load-driver.ps1
+```
+
+这个脚本会：
+
+- 按发布目录中的 `MemAttribDriver.sys` 自动创建服务
+- 启动 `MemAttrib`
+- 查询并输出驱动状态
+
+#### 3. 运行用户态验证
+
+```powershell
+.\MemAttribCli.exe --list
+.\MemAttribCli.exe --pid 4 --summary
+```
+
 ### 重启后继续做什么
 
 如果你已经执行过测试签名模式配置：
@@ -311,7 +417,7 @@ bcdedit /set testsigning on
 1. 用管理员 PowerShell 或管理员 CMD 启动驱动
 
 ```powershell
-sc start MemAttrib
+.\scripts\load-driver.ps1
 ```
 
 2. 检查驱动状态
@@ -343,8 +449,9 @@ sc query MemAttrib
 可以优先检查：
 
 - 当前系统是否真的已经进入测试签名模式
-- 驱动文件是否仍在 `build-driver\Release\MemAttribDriver.sys`
+- 驱动文件是否仍在发布目录中的 `MemAttribDriver.sys`
 - 驱动服务是否已注册为 `MemAttrib`
+- 发布目录里的 `MemAttribTest.cer` 是否已经导入
 
 对应命令：
 

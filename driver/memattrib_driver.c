@@ -145,8 +145,8 @@ MemAttribHandleSnapshot(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION IrpSp)
 {
     NTSTATUS status;
     PEPROCESS process = NULL;
-    PMEMATTRIB_SNAPSHOT_REQUEST request;
     PMEMATTRIB_SNAPSHOT_RESPONSE response;
+    MEMATTRIB_SNAPSHOT_REQUEST request;
     ULONG inputLength = IrpSp->Parameters.DeviceIoControl.InputBufferLength;
     ULONG outputLength = IrpSp->Parameters.DeviceIoControl.OutputBufferLength;
     ULONG capacity;
@@ -168,11 +168,11 @@ MemAttribHandleSnapshot(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION IrpSp)
         return STATUS_BUFFER_TOO_SMALL;
     }
 
-    request = (PMEMATTRIB_SNAPSHOT_REQUEST)Irp->AssociatedIrp.SystemBuffer;
+    RtlCopyMemory(&request, Irp->AssociatedIrp.SystemBuffer, sizeof(request));
     response = (PMEMATTRIB_SNAPSHOT_RESPONSE)Irp->AssociatedIrp.SystemBuffer;
     RtlZeroMemory(response, outputLength);
 
-    requestedCount = request->MaxRegionCount == 0 ? 1 : request->MaxRegionCount;
+    requestedCount = request.MaxRegionCount == 0 ? 1 : request.MaxRegionCount;
     if (requestedCount > capacity) {
         requestedCount = capacity;
     }
@@ -180,13 +180,13 @@ MemAttribHandleSnapshot(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION IrpSp)
         requestedCount = MEMATTRIB_MAX_BATCH_COUNT;
     }
 
-    status = PsLookupProcessByProcessId(ULongToHandle(request->ProcessId), &process);
+    status = PsLookupProcessByProcessId(ULongToHandle(request.ProcessId), &process);
     if (!NT_SUCCESS(status)) {
         Irp->IoStatus.Information = 0;
         return status;
     }
 
-    cursor = request->StartAddress;
+    cursor = request.StartAddress;
     while (count < requestedCount && cursor <= highestUserAddress) {
         PVOID nextAddress = NULL;
         status = MemAttribQueryRegion(
